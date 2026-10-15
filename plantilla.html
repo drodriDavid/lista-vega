@@ -699,7 +699,7 @@ function pinta(){
   document.querySelector('.seg button[data-f="regalo"]').classList.toggle("oculto", !veFamilia("_regalos"));
   if(!veFamilia("_precios")){ $("fprecio").value = ""; $("orden").value = ""; }
   if(!veFamilia("_regalos") && filtro === "regalo") filtro = "todo";
-  $("ayuda").classList.toggle("oculto", !veFamilia("_ayuda"));
+  $("ayuda").classList.toggle("oculto", !!D.token || oculta("_ayuda"));   // es un aviso para la familia: el admin no lo ve
   const ojo = k => D.token && oculta(k) ? '<span class="chip oculta">🙈 oculta para la familia</span>' : '';
   const html = D.categorias.map((c, ci) => {
     if(!veFamilia(c.id)) return "";
