@@ -758,7 +758,7 @@ function fila(x){
   const pie = e => esc(e.txt || tienda(e.url)) + (e.precio ? ' · <span class="precio">' + esc(e.precio) + '</span>' : '');
   const links = ls.filter(e => !e.img).map(e => '<a class="chip link" href="' + esc(e.url) + '"' + ab + '>' + fav(e.url) + pie(e) + '</a>').join("") +
     (ls.length ? '' : '<a class="chip buscar" href="https://www.google.com/search?tbm=shop&q=' + encodeURIComponent(x.nom.split(",")[0] + " bebé") + '"' + ab + '>🔍 Buscar</a>');
-  const tarjetas = ls.filter(e => e.img).map(e => '<a class="tarjeta" href="' + esc(e.url) + '"' + ab + '><img src="' + esc(e.img) + '" alt="" loading="lazy" referrerpolicy="no-referrer"><span><b>' + esc(e.titulo || x.nom) + '</b><small>' + fav(e.url) + pie(e) + '</small></span><i>↗</i></a>').join("");
+  const tarjetas = ls.filter(e => e.img).map(e => '<a class="tarjeta" href="' + esc(e.url) + '"' + ab + '><img src="' + esc(e.img) + '" alt="" loading="lazy" referrerpolicy="no-referrer"><span><b>' + esc(limpiaTitulo(e.titulo) || x.nom) + '</b><small>' + fav(e.url) + pie(e) + '</small></span><i>↗</i></a>').join("");
   let reg = "";
   // La familia solo ve que ya está cogido; el nombre lo ve el admin
   if(!h && g) reg = '<span class="chip quien">🎁 ' + (D.token ? 'Lo regala ' + esc(g.quien) : 'Ya lo regala alguien') + '</span>';
