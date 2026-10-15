@@ -464,7 +464,13 @@ const favicon = u => "https://www.google.com/s2/favicons?sz=64&domain=" + encode
 const fav = u => '<img class="fav" src="' + esc(favicon(u)) + '" alt="" loading="lazy">';
 function extraeUrl(t){ const m = String(t || "").match(/https?:\/\/[^\s<>"']+/i); return m ? m[0].replace(/[),.;!?]+$/, "") : ""; }
 const pareceUrl = t => /^(https?:\/\/|www\.)\S+$/i.test(t) || /^[a-z0-9-]+(\.[a-z0-9-]+)+\/\S*$/i.test(t);
-const limpiaTitulo = t => String(t || "").replace(/^amazon\.[a-z.]+\s*:\s*/i, "").replace(/\s*[:|–-]\s*(amazon|ikea|el corte ingl[eé]s|decathlon)[^:|]*$/i, "").trim().slice(0, 100);
+const limpiaTitulo = t => String(t || "").replace(/^amazon\.[a-z.]+\s*:\s*/i, "").replace(/\s*[:|–·-]\s*(amazon|ikea|el corte ingl[eé]s|decathlon|kiabi|carrefour|prénatal|prenatal)[^:|·]*$/i, "").trim().slice(0, 100);
+// Amazon no deja leer sus páginas, pero la foto sale del código del producto (ASIN)
+function fotoAmazon(url){
+  if(!/amazon\.|amzn\./i.test(host(url))) return {};
+  const m = url.match(/\/(?:dp|gp\/product|gp\/aw\/d|o\/ASIN)\/([A-Z0-9]{10})/i);
+  return m ? {img:"https://images-na.ssl-images-amazon.com/images/P/" + m[1].toUpperCase() + ".01.LZZZZZZZ.jpg"} : {};
+}
 // Nombre y foto del producto (microlink.io, gratis y sin clave); si no responde, se sigue sin ellos
 async function meta(url){
   try{
@@ -473,9 +479,21 @@ async function meta(url){
     const j = await r.json(); if(j.status !== "success") return {};
     const d = j.data || {}; let t = limpiaTitulo(d.title);
     // Páginas de error, de bloqueo o genéricas: mejor sin título ni foto que con uno equivocado
-    if(/no encontrad|not found|40[34]|error|robot|captcha|access denied|just a moment|attention required|todos los productos|^amazon|^inicio$|^home$/i.test(t) || t.length < 4) return {};
-    return {titulo:t, img:(d.image && d.image.url) || ""};
-  }catch(e){ return {}; }
+    if(/no encontrad|not found|\b40[34]\b|error|robot|captcha|access denied|just a moment|attention required|todos los productos|^amazon|^inicio$|^home$/i.test(t) || t.length < 4) return fotoAmazon(url);
+    const img = (d.image && d.image.url) || fotoAmazon(url).img || "";
+    return {titulo:t, img};
+  }catch(e){ return fotoAmazon(url); }
+}
+// Busca otra vez la foto (y el nombre) de los enlaces que se quedaron sin ella
+const probadas = new Set();
+async function repararFotos(){
+  const pend = [];
+  for(const id in S.enlaces) (S.enlaces[id] || []).forEach(l => { if(!l.img && !probadas.has(l.url)) pend.push([id, l.url]); });
+  for(const [id, url] of pend.slice(0, 8)){
+    probadas.add(url);
+    const m = await meta(normUrl(url) || url);
+    if(m.img || m.titulo) cambiar(s => { (s.enlaces[id] || []).forEach(l => { if(l.url === url){ if(m.img && !l.img) l.img = m.img; if(m.titulo && !l.titulo) l.titulo = m.titulo; } }); });
+  }
 }
 function completaMeta(id, url){
   meta(url).then(m => {
@@ -485,7 +503,14 @@ function completaMeta(id, url){
   });
 }
 async function pegar(){ try{ const t = await navigator.clipboard.readText(); return extraeUrl(t) || t.trim(); }catch(e){ toast("Mantén pulsado y elige Pegar"); return ""; } }
-function normUrl(u){ u = (u || "").trim(); if(!u) return ""; if(!/^https?:\/\//i.test(u)) u = "https://" + u; try{ const x = new URL(u); return /^https?:$/.test(x.protocol) && x.hostname.includes(".") ? x.href : ""; }catch(e){ return ""; } }
+function normUrl(u){
+  u = (u || "").trim(); if(!u) return ""; if(!/^https?:\/\//i.test(u)) u = "https://" + u;
+  try{
+    const x = new URL(u); if(!/^https?:$/.test(x.protocol) || !x.hostname.includes(".")) return "";
+    [...x.searchParams.keys()].forEach(k => { if(/^(utm_|fbclid|gclid|gbraid|wbraid|mc_|_ga|srsltid|ref_|pd_rd|pf_rd|psc$|th$|smid$|spm|scm|_ref)/i.test(k)) x.searchParams.delete(k); });
+    return x.href;
+  }catch(e){ return ""; }
+}
 function yo(){ try{ return localStorage.getItem(CLAVE_YO) || ""; }catch(e){ return ""; } }
 function setYo(n){ try{ localStorage.setItem(CLAVE_YO, n); }catch(e){} }
 let tt; function toast(m){ const t = $("toast"); t.textContent = m; t.classList.add("ver"); clearTimeout(tt); tt = setTimeout(() => t.classList.remove("ver"), 2600); }
@@ -629,6 +654,7 @@ async function entrar(pass, silencioso){
   modo();
   estado("● cargando…", "va"); await refrescar(true);
   if(COMPARTIDO){ const c = COMPARTIDO; COMPARTIDO = null; dialogoEnlace(c.url, c.titulo); }
+  if(D.token) repararFotos();
   setInterval(() => { if(!document.hidden) refrescar(); }, 20000);
 }
 function modo(){
@@ -764,7 +790,7 @@ function editor(row, reabrir){
     '<label>🎁 ¿Quién lo regala?<input data-k="regala" value="' + esc((S.regalos[id] || {}).quien || "") + '" maxlength="40" placeholder="Déjalo vacío si nadie"></label>' +
     '<label class="full">Nota<input data-k="nota" value="' + esc(S.notas[id] || "") + '" maxlength="140" placeholder="Talla, color, modelo…"></label>' +
     '<div class="full enl"><b>Enlaces para comprarlo</b>' +
-      mios.map((e, i) => '<div class="enl-f"><span>' + fav(e.url) + esc(e.titulo || e.txt || tienda(e.url)) + (e.precio ? ' · ' + esc(e.precio) : '') + '</span><button type="button" class="mini" data-quitaenl="' + i + '">quitar</button></div>').join("") +
+      mios.map((e, i) => '<div class="enl-f"><span>' + fav(e.url) + esc(e.titulo || e.txt || tienda(e.url)) + (e.precio ? ' · ' + esc(e.precio) : '') + '</span><span><button type="button" class="mini" data-fotoenl="' + i + '">foto</button><button type="button" class="mini" data-quitaenl="' + i + '">quitar</button></span></div>').join("") +
       '<div class="enl-n"><div class="pega"><input data-k="url" inputmode="url" autocomplete="off" placeholder="Pega aquí el enlace"><button type="button" class="ghost" data-pegar title="Pegar enlace">📋</button></div>' +
       '<input data-k="txt" maxlength="30" placeholder="Tienda (se pone sola)"><input data-k="precio" maxlength="20" placeholder="Precio (opcional)"></div></div>' +
     '<div class="full bot">' + (x.extra ? '<button type="button" class="ghost" data-borrar>🗑 Quitar</button>' : '') + '<span style="flex:1"></span><button type="button" class="ghost" data-cerrar>Cancelar</button><button type="button" class="btn" data-ok>Guardar</button></div>';
@@ -792,6 +818,15 @@ document.addEventListener("click", async e => {
     cambiar(s => { if(v) s.hechos[id] = true; else delete s.hechos[id]; });
     } else if(e.target.closest("[data-ed]")) editor(row);
   else if(e.target.closest("[data-cerrar]")){ abierto = null; pinta(); }
+  else if(e.target.closest("[data-fotoenl]")){
+    const i = +e.target.closest("[data-fotoenl]").dataset.fotoenl, l = (S.enlaces[id] || [])[i]; if(!l) return;
+    const v = prompt("Pega el enlace de la foto (mantén pulsada la foto en la tienda → Copiar dirección de la imagen). Déjalo vacío para quitarla.", l.img || "");
+    if(v === null) return;
+    const img = v.trim() ? normUrl(v) : "";
+    if(v.trim() && !img){ toast("Ese enlace de foto no parece válido"); return; }
+    cambiar(s => { (s.enlaces[id] || []).forEach(x => { if(x.url === l.url) x.img = img; }); });
+    toast(img ? "Foto puesta 🖼" : "Foto quitada");
+  }
   else if(e.target.closest("[data-quitaenl]")){
     const i = +e.target.closest("[data-quitaenl]").dataset.quitaenl, u = (S.enlaces[id] || [])[i]?.url;
     cambiar(s => { s.enlaces[id] = (s.enlaces[id] || []).filter(l => l.url !== u); if(!s.enlaces[id].length) delete s.enlaces[id]; });
